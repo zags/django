@@ -1338,6 +1338,11 @@ class CsrfViewMiddlewareTests(CsrfViewMiddlewareTestMixin, SimpleTestCase):
             status_code=403,
         )
 
+    @override_settings(CSRF_COOKIE_SIGNED=True)
+    def test_csrf_cookie_signing(self):
+        pass
+        # TODO: add test
+
 
 @override_settings(CSRF_USE_SESSIONS=True, CSRF_COOKIE_DOMAIN=None)
 class CsrfViewMiddlewareUseSessionsTests(CsrfViewMiddlewareTestMixin, SimpleTestCase):

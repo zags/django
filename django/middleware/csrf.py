@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.exceptions import DisallowedHost, ImproperlyConfigured
+from django.core.signing import BadSignature
 from django.http import HttpHeaders, UnreadablePostError
 from django.urls import get_callable
 from django.utils.cache import patch_vary_headers
@@ -35,6 +36,7 @@ REASON_MALFORMED_REFERER = "Referer checking failed - Referer is malformed."
 REASON_INSECURE_REFERER = (
     "Referer checking failed - Referer is insecure while host is secure."
 )
+REASON_INVALID_SIGNATURE = "CSRF cookie has an invalid signature."
 # The reason strings below are for passing to InvalidTokenFormat. They are
 # phrases without a subject because they can be in reference to either the CSRF
 # cookie or non-cookie token.
@@ -237,9 +239,14 @@ class CsrfViewMiddleware(MiddlewareMixin):
                 )
         else:
             try:
-                csrf_secret = request.COOKIES[settings.CSRF_COOKIE_NAME]
+                if settings.CSRF_COOKIE_SIGNED:
+                    csrf_secret = request.get_signed_cookie(settings.CSRF_COOKIE_NAME)
+                else:
+                    csrf_secret = request.COOKIES[settings.CSRF_COOKIE_NAME]
             except KeyError:
                 csrf_secret = None
+            except BadSignature:
+                raise RejectRequest(REASON_INVALID_SIGNATURE)
             else:
                 # This can raise InvalidTokenFormat.
                 _check_token_format(csrf_secret)
@@ -255,7 +262,11 @@ class CsrfViewMiddleware(MiddlewareMixin):
             if request.session.get(CSRF_SESSION_KEY) != request.META["CSRF_COOKIE"]:
                 request.session[CSRF_SESSION_KEY] = request.META["CSRF_COOKIE"]
         else:
-            response.set_cookie(
+            if settings.CSRF_COOKIE_SIGNED:
+                response_set_cookie = response.set_signed_cookie
+            else:
+                response_set_cookie = response.set_cookie
+            response_set_cookie(
                 settings.CSRF_COOKIE_NAME,
                 request.META["CSRF_COOKIE"],
                 max_age=settings.CSRF_COOKIE_AGE,
